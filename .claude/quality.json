@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "_": "Manifesto de qualidade do repo. Fonte unica dos comandos reais — lido pelo /verify e pelos hooks. null = etapa nao configurada (o gate pula e reporta, nunca finge que passou). PREENCHA com os comandos deste repo.",
+  "commands": {
+    "lint": "cd src-tauri && cargo clippy --all-targets -- -D warnings",
+    "typecheck": "pnpm typecheck",
+    "test": "pnpm test && cd src-tauri && cargo test",
+    "e2e": null,
+    "build": "pnpm build"
+  },
+  "coverage": {
+    "min": null
+  },
+  "commit": {
+    "types": [
+      "feature",
+      "bugfix",
+      "fix",
+      "release",
+      "refactor",
+      "docs",
+      "style",
+      "test",
+      "chore",
+      "hotfix"
+    ],
+    "scopes": null,
+    "scope_required": false,
+    "subject_max": 72,
+    "type_aliases": {
+      "feat": "feature"
+    }
+  },
+  "gate": {
+    "commit": {
+      "run": [],
+      "blocking": true
+    },
+    "stop": {
+      "run": [],
+      "blocking": false
+    }
+  },
+  "known_issues": [
+    "e2e: nao existe ainda; captura de tela depende de hardware/display real, sem harness definido",
+    "lint de front (ESLint/Biome) nao configurado no scaffold; clippy cobre so o Rust",
+    "cargo clippy/test levam ~3.5 min em build frio; por isso nada vai para gate.commit ainda"
+  ]
+}

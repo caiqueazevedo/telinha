@@ -1,0 +1,5 @@
+# Guardrails do agente: precisam de LF mesmo no Windows.
+# core.autocrlf=true entrega CRLF no checkout, e ai o bash quebra com
+# "$'\r': command not found" — o hook morre em silencio, que e exatamente
+# o modo de falha que o harness existe para impedir.
+.claude/hooks/** text eol=lf
