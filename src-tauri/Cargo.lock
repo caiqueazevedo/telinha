@@ -3798,7 +3798,9 @@ dependencies = [
 name = "telinha"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "cpal",
+ "parking_lot",
  "serde",
  "serde_json",
  "tauri",

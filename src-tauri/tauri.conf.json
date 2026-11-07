@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "telinha",
+  "productName": "Telinha",
   "version": "0.1.0",
   "identifier": "dev.caique.telinha",
   "build": {
@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
-        "title": "telinha",
-        "width": 800,
-        "height": 600
+        "title": "Telinha",
+        "width": 320,
+        "height": 260,
+        "resizable": false
       }
     ],
     "security": {

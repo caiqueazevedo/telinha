@@ -1,49 +1,82 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
+import { formatElapsed } from "./lib/format";
+import { recorder, type RecordingStatus } from "./lib/recorder";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+function App() {
+  const [status, setStatus] = useState<RecordingStatus | null>(null);
+  const [commandError, setCommandError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    const unlisten = recorder.onState((next) => {
+      if (!disposed) setStatus(next);
+    });
+    recorder.status().then((next) => {
+      if (!disposed) setStatus(next);
+    });
+    return () => {
+      disposed = true;
+      unlisten.then((stop) => stop());
+    };
+  }, []);
+
+  const recording = status?.phase === "recording";
+  const stopping = status?.phase === "stopping";
+  const now = useNow(recording);
+
+  async function toggle() {
+    setCommandError(null);
+    try {
+      setStatus(await (recording ? recorder.stop() : recorder.start()));
+    } catch (error) {
+      setCommandError(String(error));
+    }
   }
 
+  const error = commandError ?? status?.error;
+
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <main className="panel">
+      <div className="timer" aria-label="Tempo de gravação">
+        {status?.phase === "recording" ? formatElapsed(now - status.startedAtMs) : "00:00"}
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
+      <button
+        type="button"
+        className={recording ? "record recording" : "record"}
+        onClick={toggle}
+        disabled={!status || stopping}
       >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
+        {stopping ? "Finalizando…" : recording ? "Parar" : "Gravar"}
+      </button>
+
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+
+      {status?.lastRecording && (
+        <p className="last" title={status.lastRecording}>
+          Salvo: {status.lastRecording.split(/[\\/]/).pop()}
+        </p>
+      )}
+
+      <button type="button" className="link" onClick={() => recorder.openOutputDir()}>
+        Abrir pasta
+      </button>
     </main>
   );
 }
