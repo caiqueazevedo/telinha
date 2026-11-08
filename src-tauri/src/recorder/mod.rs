@@ -21,7 +21,7 @@ pub struct Recorder {
     session: Mutex<Option<Session>>,
 }
 
-fn output_dir(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn output_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().video_dir().map_err(|e| e.to_string())?.join(paths::OUTPUT_SUBDIR);
     std::fs::create_dir_all(&dir).map_err(|e| format!("Não foi possível criar {}: {e}", dir.display()))?;
     Ok(dir)

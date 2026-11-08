@@ -34,9 +34,13 @@ export type CaptureTarget =
   | { kind: "window"; id: string }
   | ({ kind: "region" } & Region);
 
+/** A finished file in the output folder; `name` is all the backend needs to open it. */
+export type Recording = { name: string; bytes: number; modifiedMs: number };
+
 export const STATE_EVENT = "recording://state";
 export const REGION_EVENT = "region://selected";
 export const WEBCAM_CLOSED_EVENT = "webcam://closed";
+export const SHORTCUT_EVENT = "shortcut://toggle-recording";
 
 export const recorder = {
   status: () => invoke<RecordingStatus>("recording_status"),
@@ -51,10 +55,14 @@ export const recorder = {
   finishRegionPick: (selection: Rect | null) => invoke<void>("finish_region_pick", { selection }),
   openWebcam: () => invoke<void>("open_webcam"),
   closeWebcam: () => invoke<void>("close_webcam"),
+  recordings: () => invoke<Recording[]>("list_recordings"),
+  openRecording: (name: string) => invoke<void>("open_recording", { name }),
   onState: (handler: (status: RecordingStatus) => void): Promise<UnlistenFn> =>
     listen<RecordingStatus>(STATE_EVENT, (event) => handler(event.payload)),
   onRegionSelected: (handler: (region: Region | null) => void): Promise<UnlistenFn> =>
     listen<Region | null>(REGION_EVENT, (event) => handler(event.payload)),
   /** The bubble was closed, from the panel or from the bubble itself. */
   onWebcamClosed: (handler: () => void): Promise<UnlistenFn> => listen(WEBCAM_CLOSED_EVENT, () => handler()),
+  /** Ctrl+Shift+R, pressed anywhere in Windows. */
+  onShortcut: (handler: () => void): Promise<UnlistenFn> => listen(SHORTCUT_EVENT, () => handler()),
 };

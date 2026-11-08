@@ -1,8 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatElapsed } from "./lib/format";
 import { AudioSource } from "./components/AudioSource";
+import { Recents } from "./components/Recents";
 import { CaptureSource, targetOf, type CaptureChoice } from "./components/CaptureSource";
-import { recorder, type AudioDevice, type AudioDevices, type RecordingStatus, type Sources } from "./lib/recorder";
+import {
+  recorder,
+  type AudioDevice,
+  type AudioDevices,
+  type Recording,
+  type RecordingStatus,
+  type Sources,
+} from "./lib/recorder";
 import "./App.css";
 
 function useNow(active: boolean): number {
@@ -35,6 +43,7 @@ function App() {
   const [system, setSystem] = useState<SourceChoice>({ enabled: false, deviceId: null });
   const [sources, setSources] = useState<Sources>({ monitors: [], windows: [] });
   const [webcam, setWebcam] = useState(false);
+  const [recents, setRecents] = useState<Recording[]>([]);
   const [capture, setCapture] = useState<CaptureChoice>({ mode: "monitor", monitor: null, window: null, region: null });
 
   function loadSources() {
@@ -113,6 +122,7 @@ function App() {
   const target = targetOf(capture);
 
   async function toggle() {
+    if (!status || stopping) return;
     setCommandError(null);
     try {
       if (recording) setStatus(await recorder.stop());
@@ -120,6 +130,28 @@ function App() {
     } catch (error) {
       setCommandError(String(error));
     }
+  }
+
+  // The shortcut listener is registered once, so it calls whatever toggle is current.
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
+  useEffect(() => {
+    const unlisten = recorder.onShortcut(() => void toggleRef.current());
+    return () => {
+      unlisten.then((stop) => stop());
+    };
+  }, []);
+
+  const lastRecording = status?.lastRecording ?? null;
+  useEffect(() => {
+    recorder
+      .recordings()
+      .then(setRecents)
+      .catch((error) => setCommandError(String(error)));
+  }, [lastRecording]);
+
+  function openRecording(name: string) {
+    recorder.openRecording(name).catch((error) => setCommandError(String(error)));
   }
 
   const error = commandError ?? status?.error;
@@ -138,6 +170,7 @@ function App() {
       >
         {stopping ? "Finalizando…" : recording ? "Parar" : "Gravar"}
       </button>
+      <span className="hint">Ctrl+Shift+R</span>
 
       <fieldset className="sources" disabled={!status || recording || stopping}>
         <legend>Captura</legend>
@@ -187,6 +220,8 @@ function App() {
           Salvo: {status.lastRecording.split(/[\\/]/).pop()}
         </p>
       )}
+
+      <Recents recordings={recents} onOpen={openRecording} />
 
       <button type="button" className="link" onClick={() => recorder.openOutputDir()}>
         Abrir pasta

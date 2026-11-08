@@ -171,3 +171,45 @@ body {
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
 }
+
+.recents {
+  width: 100%;
+}
+
+.recents h2 {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.recents ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent:hover {
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+}
+
+.recent-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

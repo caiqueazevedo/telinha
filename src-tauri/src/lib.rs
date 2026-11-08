@@ -1,9 +1,13 @@
+use tauri::Manager;
+
 mod devices;
 mod mix;
 mod paths;
 mod picker;
 mod recorder;
+mod recordings;
 mod region;
+mod shell;
 mod sources;
 mod webcam;
 
@@ -11,6 +15,14 @@ mod webcam;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(shell::shortcut_plugin())
+        .setup(|app| {
+            shell::register_shortcut(app.handle());
+            if let Some(main) = app.get_webview_window("main") {
+                shell::exclude_from_capture(&main);
+            }
+            Ok(())
+        })
         .manage(recorder::Recorder::default())
         .manage(picker::Picker::default())
         .invoke_handler(tauri::generate_handler![
@@ -24,6 +36,8 @@ pub fn run() {
             picker::finish_region_pick,
             webcam::open_webcam,
             webcam::close_webcam,
+            recordings::list_recordings,
+            recordings::open_recording,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

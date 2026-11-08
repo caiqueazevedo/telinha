@@ -46,7 +46,7 @@ const audio = { mic: "wasapi:mic-2", system: "wasapi:out-1" };
 
 function respond(responses: Record<string, unknown>) {
   invoke.mockImplementation(async (command: string) => {
-    const response = { list_audio_devices: devices, list_sources: sources, ...responses }[command];
+    const response = { list_audio_devices: devices, list_sources: sources, list_recordings: [], ...responses }[command];
     if (response instanceof Error) throw response.message;
     return response;
   });
@@ -257,5 +257,59 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Abrir pasta" }));
 
     expect(invoke).toHaveBeenCalledWith("open_output_dir");
+  });
+
+  it("starts and stops from the global shortcut", async () => {
+    respond({ recording_status: idle, start_recording: recording, stop_recording: idle });
+    render(<App />);
+    await recordButton();
+
+    emit("shortcut://toggle-recording", null);
+    expect(await screen.findByRole("button", { name: "Parar" })).toBeEnabled();
+    expect(invoke).toHaveBeenCalledWith("start_recording", { target: primary, audio });
+
+    emit("shortcut://toggle-recording", null);
+    expect(await screen.findByRole("button", { name: "Gravar" })).toBeEnabled();
+    expect(invoke).toHaveBeenCalledWith("stop_recording");
+  });
+
+  it("ignores the shortcut while the file is being finalized", async () => {
+    respond({ recording_status: idle });
+    render(<App />);
+    await recordButton();
+    emit("recording://state", { phase: "stopping", path: "a.mp4", lastRecording: null, error: null });
+
+    emit("shortcut://toggle-recording", null);
+
+    expect(invoke).not.toHaveBeenCalledWith("stop_recording");
+    expect(invoke).not.toHaveBeenCalledWith("start_recording", expect.anything());
+  });
+
+  it("lists recent recordings and opens one", async () => {
+    const recents = [
+      { name: "telinha-2.mp4", bytes: 3 * 1024 ** 2, modifiedMs: 2 },
+      { name: "telinha-1.mp4", bytes: 500 * 1024, modifiedMs: 1 },
+    ];
+    respond({ recording_status: idle, list_recordings: recents, open_recording: undefined });
+    render(<App />);
+
+    const list = await screen.findByRole("region", { name: "Recentes" });
+    expect(list).toHaveTextContent("3.0 MB");
+    await userEvent.click(screen.getByRole("button", { name: /telinha-1\.mp4/ }));
+
+    expect(invoke).toHaveBeenCalledWith("open_recording", { name: "telinha-1.mp4" });
+  });
+
+  it("refreshes the recent list after a recording is saved", async () => {
+    const done: RecordingStatus = { ...idle, lastRecording: "C:\\Videos\\Telinha\\telinha-9.mp4" };
+    respond({ recording_status: recording, stop_recording: done });
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Parar" }));
+    await screen.findByText("Salvo: telinha-9.mp4");
+
+    await waitFor(() =>
+      expect(invoke.mock.calls.filter(([command]) => command === "list_recordings")).toHaveLength(2),
+    );
   });
 });
