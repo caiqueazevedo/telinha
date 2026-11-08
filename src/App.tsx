@@ -34,6 +34,7 @@ function App() {
   const [mic, setMic] = useState<SourceChoice>({ enabled: false, deviceId: null });
   const [system, setSystem] = useState<SourceChoice>({ enabled: false, deviceId: null });
   const [sources, setSources] = useState<Sources>({ monitors: [], windows: [] });
+  const [webcam, setWebcam] = useState(false);
   const [capture, setCapture] = useState<CaptureChoice>({ mode: "monitor", monitor: null, window: null, region: null });
 
   function loadSources() {
@@ -62,6 +63,24 @@ function App() {
       unlisten.then((stop) => stop());
     };
   }, []);
+
+  useEffect(() => {
+    const unlisten = recorder.onWebcamClosed(() => setWebcam(false));
+    return () => {
+      unlisten.then((stop) => stop());
+    };
+  }, []);
+
+  async function toggleWebcam(enabled: boolean) {
+    setCommandError(null);
+    try {
+      if (enabled) await recorder.openWebcam();
+      else await recorder.closeWebcam();
+      setWebcam(enabled);
+    } catch (error) {
+      setCommandError(String(error));
+    }
+  }
 
   useEffect(() => {
     recorder
@@ -150,6 +169,12 @@ function App() {
           onDeviceChange={(deviceId) => setSystem({ ...system, deviceId })}
         />
       </fieldset>
+
+      {/* The bubble can be toggled mid-recording; the window capture mode never shows it. */}
+      <label className="toggle">
+        <input type="checkbox" checked={webcam} onChange={(event) => toggleWebcam(event.target.checked)} />
+        Webcam
+      </label>
 
       {error && (
         <p className="error" role="alert">

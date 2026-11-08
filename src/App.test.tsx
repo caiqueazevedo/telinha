@@ -173,6 +173,53 @@ describe("App", () => {
     expect(screen.getByLabelText("Área")).toHaveTextContent("640 × 360");
   });
 
+  it("opens and closes the webcam bubble", async () => {
+    respond({ recording_status: idle, open_webcam: undefined, close_webcam: undefined });
+    render(<App />);
+    const webcam = screen.getByRole("checkbox", { name: "Webcam" });
+
+    await userEvent.click(webcam);
+    expect(invoke).toHaveBeenCalledWith("open_webcam");
+    await waitFor(() => expect(webcam).toBeChecked());
+
+    await userEvent.click(webcam);
+    expect(invoke).toHaveBeenCalledWith("close_webcam");
+    await waitFor(() => expect(webcam).not.toBeChecked());
+  });
+
+  it("keeps the webcam toggle usable while recording", async () => {
+    respond({ recording_status: recording, open_webcam: undefined });
+    render(<App />);
+    await screen.findByRole("button", { name: "Parar" });
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "Webcam" }));
+
+    expect(invoke).toHaveBeenCalledWith("open_webcam");
+  });
+
+  it("unchecks the webcam when the bubble closes itself", async () => {
+    respond({ recording_status: idle, open_webcam: undefined });
+    render(<App />);
+    const webcam = screen.getByRole("checkbox", { name: "Webcam" });
+    await userEvent.click(webcam);
+    await waitFor(() => expect(webcam).toBeChecked());
+
+    emit("webcam://closed", null);
+
+    expect(webcam).not.toBeChecked();
+  });
+
+  it("leaves the webcam unchecked when it fails to open", async () => {
+    respond({ recording_status: idle, open_webcam: new Error("Sem câmera") });
+    render(<App />);
+    const webcam = screen.getByRole("checkbox", { name: "Webcam" });
+
+    await userEvent.click(webcam);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sem câmera");
+    expect(webcam).not.toBeChecked();
+  });
+
   it("shows the saved file name after stopping", async () => {
     const done: RecordingStatus = { ...idle, lastRecording: "C:\\Videos\\Telinha\\telinha-1.mp4" };
     respond({ recording_status: recording, stop_recording: done });

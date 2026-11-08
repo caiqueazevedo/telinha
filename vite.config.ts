@@ -8,10 +8,10 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
-  // The region picker is its own window, so it gets its own page.
+  // The region picker and the webcam bubble are their own windows, so they get their own pages.
   build: {
     rollupOptions: {
-      input: { main: "index.html", region: "region.html" },
+      input: { main: "index.html", region: "region.html", webcam: "webcam.html" },
     },
   },
 

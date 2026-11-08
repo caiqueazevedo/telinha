@@ -36,6 +36,7 @@ export type CaptureTarget =
 
 export const STATE_EVENT = "recording://state";
 export const REGION_EVENT = "region://selected";
+export const WEBCAM_CLOSED_EVENT = "webcam://closed";
 
 export const recorder = {
   status: () => invoke<RecordingStatus>("recording_status"),
@@ -48,8 +49,12 @@ export const recorder = {
   openRegionPicker: (monitor: number) => invoke<void>("open_region_picker", { monitor }),
   /** Sent by the picker window; `null` cancels. */
   finishRegionPick: (selection: Rect | null) => invoke<void>("finish_region_pick", { selection }),
+  openWebcam: () => invoke<void>("open_webcam"),
+  closeWebcam: () => invoke<void>("close_webcam"),
   onState: (handler: (status: RecordingStatus) => void): Promise<UnlistenFn> =>
     listen<RecordingStatus>(STATE_EVENT, (event) => handler(event.payload)),
   onRegionSelected: (handler: (region: Region | null) => void): Promise<UnlistenFn> =>
     listen<Region | null>(REGION_EVENT, (event) => handler(event.payload)),
+  /** The bubble was closed, from the panel or from the bubble itself. */
+  onWebcamClosed: (handler: () => void): Promise<UnlistenFn> => listen(WEBCAM_CLOSED_EVENT, () => handler()),
 };

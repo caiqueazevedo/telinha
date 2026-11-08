@@ -5,6 +5,7 @@ mod picker;
 mod recorder;
 mod region;
 mod sources;
+mod webcam;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +22,8 @@ pub fn run() {
             sources::list_sources,
             picker::open_region_picker,
             picker::finish_region_pick,
+            webcam::open_webcam,
+            webcam::close_webcam,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
