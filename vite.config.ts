@@ -8,6 +8,13 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
+  // The region picker and the webcam bubble are their own windows, so they get their own pages.
+  build: {
+    rollupOptions: {
+      input: { main: "index.html", region: "region.html", webcam: "webcam.html" },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

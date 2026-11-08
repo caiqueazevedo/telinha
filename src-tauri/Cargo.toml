@@ -1,6 +1,6 @@
 [package]
 name = "telinha"
-version = "0.1.0"
+version = "1.0.0"
 description = "Desktop screen recorder"
 authors = ["Caique Azevedo"]
 edition = "2024"
@@ -22,6 +22,12 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+windows-capture = "2"
+cpal = "0.18.2"
+parking_lot = "0.12"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
+tauri-plugin-global-shortcut = "2"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
