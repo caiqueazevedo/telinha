@@ -68,6 +68,14 @@ beforeEach(() => {
 });
 
 describe("App", () => {
+  it("shows the telinha brand", async () => {
+    respond({ recording_status: idle });
+    render(<App />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "telinha" })).toBeInTheDocument();
+    await recordButton();
+  });
+
   it("records the primary monitor by default and shows the stop button", async () => {
     respond({ recording_status: idle, start_recording: recording });
     render(<App />);

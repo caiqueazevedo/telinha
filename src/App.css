@@ -31,6 +31,23 @@ body {
   padding: 20px 16px;
 }
 
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.brand-mark {
+  width: 18px;
+  height: 16px;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
 .timer {
   font-size: 2.25rem;
   font-variant-numeric: tabular-nums;
