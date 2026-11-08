@@ -50,6 +50,19 @@ impl Resampler {
     }
 }
 
+/// Level above which peaks are bent smoothly towards full scale instead of clipped flat.
+const SOFT_KNEE: f32 = 0.9;
+
+/// Leaves the signal untouched up to the knee, then saturates along a tanh curve that never exceeds 1.
+pub fn soft_clip(sample: f32) -> f32 {
+    let magnitude = sample.abs();
+    if magnitude <= SOFT_KNEE {
+        return sample;
+    }
+    let headroom = 1.0 - SOFT_KNEE;
+    (SOFT_KNEE + headroom * ((magnitude - SOFT_KNEE) / headroom).tanh()).copysign(sample)
+}
+
 /// Sums tracks with their gains and writes little-endian PCM16. Tracks shorter than
 /// `samples` are padded with silence.
 pub fn mix_to_pcm16(tracks: &[(&[f32], f32)], samples: usize, out: &mut Vec<u8>) {
@@ -57,7 +70,7 @@ pub fn mix_to_pcm16(tracks: &[(&[f32], f32)], samples: usize, out: &mut Vec<u8>)
     out.reserve(samples * 2);
     for i in 0..samples {
         let sum: f32 = tracks.iter().map(|(track, gain)| track.get(i).copied().unwrap_or(0.0) * gain).sum();
-        let value = (sum.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
+        let value = (soft_clip(sum) * f32::from(i16::MAX)) as i16;
         out.extend_from_slice(&value.to_le_bytes());
     }
 }
@@ -123,9 +136,23 @@ mod tests {
     }
 
     #[test]
-    fn mix_clips_instead_of_wrapping() {
+    fn mix_saturates_instead_of_wrapping() {
         let mut out = Vec::new();
         mix_to_pcm16(&[(&[0.9, -0.9], 1.0), (&[0.9, -0.9], 1.0)], 2, &mut out);
-        assert_eq!(pcm(&out), [i16::MAX, -i16::MAX]);
+        let [high, low] = pcm(&out)[..] else { panic!("expected two samples") };
+        assert!(high > 32_000 && low < -32_000, "got {high} {low}");
+    }
+
+    #[test]
+    fn soft_clip_keeps_normal_levels_untouched() {
+        assert_eq!(soft_clip(0.5), 0.5);
+        assert_eq!(soft_clip(-0.9), -0.9);
+    }
+
+    #[test]
+    fn soft_clip_bends_peaks_smoothly_below_full_scale() {
+        let (a, b, c) = (soft_clip(0.95), soft_clip(1.2), soft_clip(5.0));
+        assert!(0.9 < a && a < b && b < c && c <= 1.0, "got {a} {b} {c}");
+        assert_eq!(soft_clip(-1.2), -b);
     }
 }

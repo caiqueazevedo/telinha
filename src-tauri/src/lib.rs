@@ -1,6 +1,7 @@
 use tauri::Manager;
 
 mod devices;
+mod jitter;
 mod mix;
 mod paths;
 mod picker;

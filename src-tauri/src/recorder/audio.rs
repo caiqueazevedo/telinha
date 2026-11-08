@@ -1,6 +1,5 @@
 //! Microphone and system (loopback) capture mixed into the encoder's PCM16 stereo stream.
 
-use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, OnceLock};
@@ -11,11 +10,15 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample};
 use parking_lot::Mutex;
 
+use crate::jitter::JitterBuffer;
 use crate::mix::{self, OUTPUT_CHANNELS, OUTPUT_RATE};
 
 const MIX_INTERVAL: Duration = Duration::from_millis(20);
-/// A source may run ahead of the wall clock by at most this many samples before old ones are dropped.
-const MAX_BACKLOG: usize = OUTPUT_RATE as usize * OUTPUT_CHANNELS / 2;
+/// Audio held back per source to ride out uneven WASAPI packets; it delays audio by this much.
+const JITTER_TARGET: Duration = Duration::from_millis(60);
+const JITTER_TOLERANCE: Duration = Duration::from_millis(20);
+/// Beyond this (a stalled mixer), the backlog is cut back to the target.
+const JITTER_MAX: Duration = Duration::from_millis(500);
 const MIC_GAIN: f32 = 1.0;
 const SYSTEM_GAIN: f32 = 0.8;
 
@@ -23,7 +26,16 @@ const SYSTEM_GAIN: f32 = 0.8;
 pub type VideoClock = Arc<OnceLock<Instant>>;
 pub type Sink = Box<dyn FnMut(&[u8]) -> Result<(), String> + Send>;
 
-type Queue = Arc<Mutex<VecDeque<f32>>>;
+type Queue = Arc<Mutex<JitterBuffer>>;
+
+fn samples(duration: Duration) -> usize {
+    (duration.as_millis() as usize * OUTPUT_RATE as usize / 1000) * OUTPUT_CHANNELS
+}
+
+fn new_queue() -> Queue {
+    let buffer = JitterBuffer::new(OUTPUT_CHANNELS, samples(JITTER_TARGET), samples(JITTER_TOLERANCE), samples(JITTER_MAX));
+    Arc::new(Mutex::new(buffer))
+}
 
 struct Source {
     queue: Queue,
@@ -38,7 +50,7 @@ fn open(device_id: &str, loopback: bool, gain: f32) -> Result<Source, String> {
     // Building an input stream on a playback device turns on WASAPI loopback.
     let supported = if loopback { device.default_output_config() } else { device.default_input_config() }
         .map_err(|e| format!("Formato de áudio indisponível: {e}"))?;
-    let queue = Queue::default();
+    let queue = new_queue();
     let config = supported.config();
     let stream = match supported.sample_format() {
         SampleFormat::F32 => build::<f32>(&device, config, queue.clone()),
@@ -68,22 +80,13 @@ where
             mix::to_stereo(&floats, channels, &mut stereo);
             resampled.clear();
             resampler.process(&stereo, &mut resampled);
-            queue.lock().extend(resampled.iter().copied());
+            queue.lock().push(&resampled);
         },
         |error| eprintln!("audio stream error: {error}"),
         None,
     )
 }
 
-/// Takes exactly `count` samples (or fewer if the source is behind) and trims excess backlog.
-fn drain(queue: &Queue, count: usize, out: &mut Vec<f32>) {
-    let mut queue = queue.lock();
-    let excess = queue.len().saturating_sub(count + MAX_BACKLOG);
-    queue.drain(..excess);
-    out.clear();
-    let take = count.min(queue.len());
-    out.extend(queue.drain(..take));
-}
 
 pub struct AudioCapture {
     stop: Arc<AtomicBool>,
@@ -140,7 +143,7 @@ fn run_mixer(sources: &[Source], clock: &OnceLock<Instant>, stop: &AtomicBool, m
                 let samples = (due_frames.saturating_sub(sent_frames)) as usize * OUTPUT_CHANNELS;
                 if samples > 0 {
                     for (source, track) in sources.iter().zip(tracks.iter_mut()) {
-                        drain(&source.queue, samples, track);
+                        source.queue.lock().pull(samples, track);
                     }
                     let inputs: Vec<(&[f32], f32)> =
                         sources.iter().zip(&tracks).map(|(s, t)| (t.as_slice(), s.gain)).collect();
@@ -154,31 +157,5 @@ fn run_mixer(sources: &[Source], clock: &OnceLock<Instant>, stop: &AtomicBool, m
             return Ok(());
         }
         std::thread::sleep(MIX_INTERVAL);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn drain_takes_what_is_available() {
-        let queue = Queue::default();
-        queue.lock().extend([1.0, 2.0, 3.0]);
-        let mut out = Vec::new();
-        drain(&queue, 2, &mut out);
-        assert_eq!(out, [1.0, 2.0]);
-        drain(&queue, 4, &mut out);
-        assert_eq!(out, [3.0]);
-    }
-
-    #[test]
-    fn drain_drops_oldest_samples_beyond_the_backlog() {
-        let queue = Queue::default();
-        queue.lock().extend((0..MAX_BACKLOG + 10).map(|i| i as f32));
-        let mut out = Vec::new();
-        drain(&queue, 4, &mut out);
-        assert_eq!(out, [6.0, 7.0, 8.0, 9.0]);
-        assert_eq!(queue.lock().len(), MAX_BACKLOG);
     }
 }
