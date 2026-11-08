@@ -1,3 +1,5 @@
+mod devices;
+mod mix;
 mod paths;
 mod recorder;
 
@@ -11,6 +13,7 @@ pub fn run() {
             recorder::start_recording,
             recorder::stop_recording,
             recorder::open_output_dir,
+            devices::list_audio_devices,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

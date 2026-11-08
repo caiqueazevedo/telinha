@@ -1,3 +1,4 @@
+mod audio;
 pub mod state;
 mod video;
 
@@ -9,7 +10,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::paths;
 use state::{Machine, Status};
-use video::Session;
+use video::{AudioOptions, Session};
 
 pub const STATE_EVENT: &str = "recording://state";
 
@@ -36,7 +37,11 @@ pub fn recording_status(recorder: State<'_, Recorder>) -> Status {
 }
 
 #[tauri::command]
-pub async fn start_recording(app: AppHandle, recorder: State<'_, Recorder>) -> Result<Status, String> {
+pub async fn start_recording(
+    app: AppHandle,
+    recorder: State<'_, Recorder>,
+    audio: Option<AudioOptions>,
+) -> Result<Status, String> {
     let mut machine = recorder.machine.lock().unwrap();
     if !machine.is_idle() {
         return Err(state::TransitionError::AlreadyRecording.to_string());
@@ -44,7 +49,7 @@ pub async fn start_recording(app: AppHandle, recorder: State<'_, Recorder>) -> R
     let now = chrono::Local::now();
     let path = output_dir(&app).and_then(|dir| {
         let path = paths::unique_path(&dir, &paths::file_stem(now.naive_local()), Path::exists);
-        Session::start(&path).map(|session| (path, session))
+        Session::start(&path, audio.unwrap_or_default()).map(|session| (path, session))
     });
     match path {
         Ok((path, session)) => {

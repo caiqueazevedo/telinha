@@ -84,3 +84,44 @@ body {
   text-decoration: underline;
   cursor: pointer;
 }
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--muted) 40%, transparent);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.sources legend {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.source {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+
+.source select {
+  min-width: 0;
+  padding: 3px 4px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--muted) 50%, transparent);
+  background: var(--surface);
+  color: var(--fg);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
