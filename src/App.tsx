@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { formatElapsed } from "./lib/format";
 import { AudioSource } from "./components/AudioSource";
-import { recorder, type AudioDevice, type AudioDevices, type RecordingStatus } from "./lib/recorder";
+import { CaptureSource, targetOf, type CaptureChoice } from "./components/CaptureSource";
+import { recorder, type AudioDevice, type AudioDevices, type RecordingStatus, type Sources } from "./lib/recorder";
 import "./App.css";
 
 function useNow(active: boolean): number {
@@ -32,6 +33,35 @@ function App() {
   const [devices, setDevices] = useState<AudioDevices>({ inputs: [], outputs: [] });
   const [mic, setMic] = useState<SourceChoice>({ enabled: false, deviceId: null });
   const [system, setSystem] = useState<SourceChoice>({ enabled: false, deviceId: null });
+  const [sources, setSources] = useState<Sources>({ monitors: [], windows: [] });
+  const [capture, setCapture] = useState<CaptureChoice>({ mode: "monitor", monitor: null, window: null, region: null });
+
+  function loadSources() {
+    recorder
+      .sources()
+      .then((next) => {
+        setSources(next);
+        setCapture((current) => {
+          const primary = next.monitors.find((m) => m.primary) ?? next.monitors[0];
+          const monitor = next.monitors.some((m) => m.id === current.monitor) ? current.monitor : (primary?.id ?? null);
+          const window = next.windows.some((w) => w.id === current.window) ? current.window : null;
+          return { ...current, monitor, window, region: monitor === current.monitor ? current.region : null };
+        });
+      })
+      .catch((error) => setCommandError(String(error)));
+  }
+
+  useEffect(loadSources, []);
+
+  useEffect(() => {
+    const unlisten = recorder.onRegionSelected((region) => {
+      // A cancelled pick keeps the previous area.
+      if (region) setCapture((current) => ({ ...current, monitor: region.monitor, region }));
+    });
+    return () => {
+      unlisten.then((stop) => stop());
+    };
+  }, []);
 
   useEffect(() => {
     recorder
@@ -61,15 +91,13 @@ function App() {
   const recording = status?.phase === "recording";
   const stopping = status?.phase === "stopping";
   const now = useNow(recording);
+  const target = targetOf(capture);
 
   async function toggle() {
     setCommandError(null);
     try {
-      setStatus(
-        await (recording
-          ? recorder.stop()
-          : recorder.start({ mic: selected(mic), system: selected(system) })),
-      );
+      if (recording) setStatus(await recorder.stop());
+      else if (target) setStatus(await recorder.start(target, { mic: selected(mic), system: selected(system) }));
     } catch (error) {
       setCommandError(String(error));
     }
@@ -87,10 +115,21 @@ function App() {
         type="button"
         className={recording ? "record recording" : "record"}
         onClick={toggle}
-        disabled={!status || stopping}
+        disabled={!status || stopping || (!recording && !target)}
       >
         {stopping ? "Finalizando…" : recording ? "Parar" : "Gravar"}
       </button>
+
+      <fieldset className="sources" disabled={!status || recording || stopping}>
+        <legend>Captura</legend>
+        <CaptureSource
+          sources={sources}
+          choice={capture}
+          onChange={setCapture}
+          onRefresh={loadSources}
+          onPickRegion={(monitor) => recorder.openRegionPicker(monitor).catch((error) => setCommandError(String(error)))}
+        />
+      </fieldset>
 
       <fieldset className="sources" disabled={!status || recording || stopping}>
         <legend>Áudio</legend>

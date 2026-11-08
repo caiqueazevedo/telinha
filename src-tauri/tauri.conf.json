@@ -12,9 +12,10 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Telinha",
         "width": 320,
-        "height": 380,
+        "height": 520,
         "resizable": false
       }
     ],

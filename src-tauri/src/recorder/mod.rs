@@ -8,8 +8,9 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
-use crate::paths;
+use crate::{paths, sources};
 use state::{Machine, Status};
+use video::Target;
 use video::{AudioOptions, Session};
 
 pub const STATE_EVENT: &str = "recording://state";
@@ -31,6 +32,12 @@ fn publish(app: &AppHandle, status: Status) -> Status {
     status
 }
 
+fn primary_monitor() -> Result<Target, String> {
+    let monitors = sources::monitors()?;
+    let id = monitors.iter().find(|m| m.primary).or(monitors.first()).map(|m| m.id);
+    id.map(|monitor| Target::Monitor { monitor }).ok_or_else(|| "Nenhum monitor encontrado.".into())
+}
+
 #[tauri::command]
 pub fn recording_status(recorder: State<'_, Recorder>) -> Status {
     recorder.machine.lock().unwrap().status()
@@ -40,6 +47,7 @@ pub fn recording_status(recorder: State<'_, Recorder>) -> Status {
 pub async fn start_recording(
     app: AppHandle,
     recorder: State<'_, Recorder>,
+    target: Option<Target>,
     audio: Option<AudioOptions>,
 ) -> Result<Status, String> {
     let mut machine = recorder.machine.lock().unwrap();
@@ -49,7 +57,8 @@ pub async fn start_recording(
     let now = chrono::Local::now();
     let path = output_dir(&app).and_then(|dir| {
         let path = paths::unique_path(&dir, &paths::file_stem(now.naive_local()), Path::exists);
-        Session::start(&path, audio.unwrap_or_default()).map(|session| (path, session))
+        let target = target.map_or_else(primary_monitor, Ok)?;
+        Session::start(&path, target, audio.unwrap_or_default()).map(|session| (path, session))
     });
     match path {
         Ok((path, session)) => {

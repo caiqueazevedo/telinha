@@ -8,6 +8,13 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
+  // The region picker is its own window, so it gets its own page.
+  build: {
+    rollupOptions: {
+      input: { main: "index.html", region: "region.html" },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

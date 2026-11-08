@@ -125,3 +125,49 @@ body {
   align-items: center;
   gap: 6px;
 }
+
+.modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.mode {
+  padding: 4px 0;
+  border-radius: 6px;
+  text-align: center;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: color-mix(in srgb, var(--muted) 15%, transparent);
+}
+
+.mode.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.mode input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.source.row {
+  grid-template-columns: 1fr auto;
+}
+
+.small {
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--muted) 50%, transparent);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}

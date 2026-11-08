@@ -10,11 +10,13 @@ use windows_capture::frame::Frame;
 use windows_capture::graphics_capture_api::InternalCaptureControl;
 use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
-    ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings, MinimumUpdateIntervalSettings,
-    SecondaryWindowSettings, Settings,
+    ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings, GraphicsCaptureItemType,
+    MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
+use windows_capture::window::Window;
 
 use super::audio::{AudioCapture, VideoClock};
+use crate::region::{self, Crop, Selection};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
@@ -26,6 +28,20 @@ pub struct EncoderConfig {
     path: PathBuf,
     audio: bool,
     clock: VideoClock,
+    crop: Option<Crop>,
+}
+
+/// What to record. Monitors use the one-based ids from `list_sources`.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Target {
+    Monitor { monitor: usize },
+    Window { id: String },
+    Region {
+        monitor: usize,
+        #[serde(flatten)]
+        selection: Selection,
+    },
 }
 
 /// Devices to record; `None` leaves that source out.
@@ -46,6 +62,9 @@ impl AudioOptions {
 pub struct Capture {
     encoder: Option<VideoEncoder>,
     clock: VideoClock,
+    crop: Option<Crop>,
+    unpadded: Vec<u8>,
+    flipped: Vec<u8>,
 }
 
 impl GraphicsCaptureApiHandler for Capture {
@@ -53,26 +72,66 @@ impl GraphicsCaptureApiHandler for Capture {
     type Error = BoxError;
 
     fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-        let EncoderConfig { width, height, path, audio, clock } = ctx.flags;
+        let EncoderConfig { width, height, path, audio, clock, crop } = ctx.flags;
         let encoder = VideoEncoder::new(
             VideoSettingsBuilder::new(width, height).sub_type(VideoSettingsSubType::H264).frame_rate(FRAME_RATE),
             AudioSettingsBuilder::new().disabled(!audio),
             ContainerSettingsBuilder::new(),
             path,
         )?;
-        Ok(Self { encoder: Some(encoder), clock })
+        Ok(Self { encoder: Some(encoder), clock, crop, unpadded: Vec::new(), flipped: Vec::new() })
     }
 
     fn on_frame_arrived(&mut self, frame: &mut Frame, _control: InternalCaptureControl) -> Result<(), Self::Error> {
-        if let Some(encoder) = self.encoder.as_mut() {
-            encoder.send_frame(frame)?;
-            self.clock.get_or_init(Instant::now);
+        let Self { encoder, clock, crop, unpadded, flipped } = self;
+        let Some(encoder) = encoder.as_mut() else { return Ok(()) };
+        match crop {
+            None => encoder.send_frame(frame)?,
+            // A frame smaller than the crop (display mode change) is dropped rather than encoded wrong.
+            Some(crop) if !crop.fits(frame.width(), frame.height()) => return Ok(()),
+            Some(crop) => {
+                let timestamp = frame.timestamp()?.Duration;
+                let buffer = frame.buffer_crop(crop.x, crop.y, crop.right(), crop.bottom())?;
+                let pixels = buffer.as_nopadding_buffer(unpadded);
+                region::flip_rows(pixels, crop.width as usize * 4, flipped);
+                encoder.send_frame_buffer(flipped, timestamp)?;
+            }
         }
+        clock.get_or_init(Instant::now);
         Ok(())
     }
 }
 
-/// A running full-screen recording of the primary monitor.
+fn monitor(id: usize) -> Result<Monitor, String> {
+    Monitor::from_index(id).map_err(|_| "Monitor não encontrado. Atualize a lista de fontes.".to_string())
+}
+
+fn monitor_size(monitor: &Monitor) -> Result<(u32, u32), String> {
+    Ok((monitor.width().map_err(|e| e.to_string())?, monitor.height().map_err(|e| e.to_string())?))
+}
+
+fn launch<T>(item: T, config: EncoderConfig) -> Result<CaptureControl<Capture, BoxError>, String>
+where
+    T: TryInto<GraphicsCaptureItemType> + Send + 'static,
+{
+    let settings = Settings::new(
+        item,
+        CursorCaptureSettings::WithCursor,
+        DrawBorderSettings::WithoutBorder,
+        SecondaryWindowSettings::Default,
+        MinimumUpdateIntervalSettings::Default,
+        DirtyRegionSettings::Default,
+        ColorFormat::Bgra8,
+        config,
+    );
+    Capture::start_free_threaded(settings).map_err(|e| format!("Falha ao iniciar a captura: {e}"))
+}
+
+fn window_side(value: Result<i32, windows_capture::window::Error>) -> Result<u32, String> {
+    value.ok().and_then(|v| u32::try_from(v).ok()).ok_or_else(|| "Tamanho da janela indisponível.".into())
+}
+
+/// A running recording of a monitor, a window or a region of a monitor.
 pub struct Session {
     control: CaptureControl<Capture, BoxError>,
     handler: Arc<parking_lot::Mutex<Capture>>,
@@ -80,22 +139,39 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn start(path: &Path, audio: AudioOptions) -> Result<Self, String> {
-        let monitor = Monitor::primary().map_err(|e| format!("Monitor principal indisponível: {e}"))?;
-        let width = monitor.width().map_err(|e| e.to_string())? & !1;
-        let height = monitor.height().map_err(|e| e.to_string())? & !1;
+    pub fn start(path: &Path, target: Target, audio: AudioOptions) -> Result<Self, String> {
         let clock = VideoClock::new(OnceLock::new());
-        let settings = Settings::new(
-            monitor,
-            CursorCaptureSettings::WithCursor,
-            DrawBorderSettings::WithoutBorder,
-            SecondaryWindowSettings::Default,
-            MinimumUpdateIntervalSettings::Default,
-            DirtyRegionSettings::Default,
-            ColorFormat::Bgra8,
-            EncoderConfig { width, height, path: path.to_path_buf(), audio: audio.any(), clock: clock.clone() },
-        );
-        let control = Capture::start_free_threaded(settings).map_err(|e| format!("Falha ao iniciar a captura: {e}"))?;
+        let config = |width: u32, height: u32, crop: Option<Crop>| EncoderConfig {
+            width: width & !1,
+            height: height & !1,
+            path: path.to_path_buf(),
+            audio: audio.any(),
+            clock: clock.clone(),
+            crop,
+        };
+        let control = match target {
+            Target::Monitor { monitor: id } => {
+                let monitor = monitor(id)?;
+                let (width, height) = monitor_size(&monitor)?;
+                launch(monitor, config(width, height, None))?
+            }
+            Target::Window { id } => {
+                let hwnd: usize = id.parse().map_err(|_| "Janela inválida.".to_string())?;
+                let window = Window::from_raw_hwnd(hwnd as *mut std::ffi::c_void);
+                if !window.is_valid() {
+                    return Err("A janela não está mais disponível. Atualize a lista de fontes.".into());
+                }
+                // The encoder pads or crops frames when the window is resized mid-recording.
+                let (width, height) = (window_side(window.width())?, window_side(window.height())?);
+                launch(window, config(width, height, None))?
+            }
+            Target::Region { monitor: id, selection } => {
+                let monitor = monitor(id)?;
+                let (width, height) = monitor_size(&monitor)?;
+                let crop = region::fit(selection, width, height).ok_or("A região selecionada é pequena demais.")?;
+                launch(monitor, config(crop.width, crop.height, Some(crop)))?
+            }
+        };
         let handler = control.callback();
         let capture = if audio.any() {
             let sink_handler = handler.clone();
@@ -135,7 +211,31 @@ mod tests {
     #[test]
     #[ignore]
     fn records_primary_monitor() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("probe.mp4");
+        record(Target::Monitor { monitor: 1 }, "probe.mp4");
+    }
+
+    /// `cargo test -- --ignored records_region` writes `probe-region.mp4` (640x360 at 100,100).
+    #[test]
+    #[ignore]
+    fn records_region() {
+        let selection = Selection { x: 100, y: 100, width: 640, height: 360 };
+        record(Target::Region { monitor: 1, selection }, "probe-region.mp4");
+    }
+
+    #[test]
+    fn target_deserializes_from_the_front_end_shape() {
+        let json = r#"{"kind":"region","monitor":2,"x":10,"y":20,"width":300,"height":200}"#;
+        let target: Target = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            target,
+            Target::Region { monitor: 2, selection: Selection { x: 10, y: 20, width: 300, height: 200 } }
+        ));
+        let target: Target = serde_json::from_str(r#"{"kind":"window","id":"1234"}"#).unwrap();
+        assert!(matches!(target, Target::Window { id } if id == "1234"));
+    }
+
+    fn record(target: Target, name: &str) {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join(name);
         let _ = std::fs::remove_file(&path);
         let audio = std::env::var("TELINHA_PROBE_AUDIO").map_or_else(
             |_| AudioOptions::default(),
@@ -146,7 +246,7 @@ mod tests {
                 AudioOptions { mic: id(host.default_input_device()), system: id(host.default_output_device()) }
             },
         );
-        let session = Session::start(&path, audio).unwrap();
+        let session = Session::start(&path, target, audio).unwrap();
         std::thread::sleep(std::time::Duration::from_secs(4));
         session.stop().unwrap();
         assert!(std::fs::metadata(&path).unwrap().len() > 0);
