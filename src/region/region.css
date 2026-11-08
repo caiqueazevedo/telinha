@@ -1,0 +1,51 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  user-select: none;
+}
+
+.picker {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 35%);
+  cursor: crosshair;
+}
+
+.hint {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  margin: 0;
+  padding: 8px 14px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 70%);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.selection {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid #e5484d;
+  background: rgb(255 255 255 / 10%);
+}
+
+.size {
+  position: absolute;
+  bottom: 100%;
+  left: -2px;
+  margin-bottom: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #e5484d;
+  color: #fff;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
