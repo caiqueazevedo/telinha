@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatElapsed } from "./lib/format";
 import { AudioSource } from "./components/AudioSource";
-import { Brand } from "./components/Brand";
 import { Recents } from "./components/Recents";
 import { CaptureSource, targetOf, type CaptureChoice } from "./components/CaptureSource";
 import {
@@ -159,8 +158,6 @@ function App() {
 
   return (
     <main className="panel">
-      <Brand />
-
       <div className="timer" aria-label="Tempo de gravação">
         {status?.phase === "recording" ? formatElapsed(now - status.startedAtMs) : "00:00"}
       </div>
