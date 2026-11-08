@@ -49,15 +49,26 @@ pub fn fit(selection: Selection, bounds_width: u32, bounds_height: u32) -> Optio
     (width >= MIN_SIDE && height >= MIN_SIDE).then_some(Crop { x, y, width, height })
 }
 
-/// Reverses the row order of a tightly packed image. The encoder's raw-buffer path expects
-/// bottom-to-top rows, while captured frames are top-to-bottom.
-pub fn flip_rows(pixels: &[u8], row_bytes: usize, out: &mut Vec<u8>) {
+/// Integer factor a region is enlarged by before encoding, so a small selection still reaches about
+/// 1080 lines (players would otherwise blur it when filling the screen) without passing 4K.
+pub fn output_scale(width: u32, height: u32) -> u32 {
+    1080u32.div_ceil(height).min(3840 / width).min(2160 / height).max(1)
+}
+
+/// Enlarges a tightly packed BGRA image by `scale` with nearest-neighbour (text stays crisp) and
+/// reverses its rows: the encoder's raw-buffer path expects bottom-to-top rows, while captured
+/// frames are top-to-bottom.
+pub fn upscale_flip(pixels: &[u8], width: usize, scale: usize, out: &mut Vec<u8>) {
     out.clear();
-    if row_bytes == 0 {
-        return;
+    out.reserve(pixels.len() * scale * scale);
+    let row_bytes = width * 4;
+    for row in pixels.chunks_exact(row_bytes).rev() {
+        let start = out.len();
+        for pixel in row.chunks_exact(4) {
+            (0..scale).for_each(|_| out.extend_from_slice(pixel));
+        }
+        (1..scale).for_each(|_| out.extend_from_within(start..start + row_bytes * scale));
     }
-    out.reserve(pixels.len());
-    pixels.chunks_exact(row_bytes).rev().for_each(|row| out.extend_from_slice(row));
 }
 
 #[cfg(test)]
@@ -101,9 +112,39 @@ mod tests {
     }
 
     #[test]
-    fn rows_are_reversed() {
+    fn small_regions_are_scaled_up_to_about_1080_lines() {
+        assert_eq!(output_scale(532, 442), 3);
+        assert_eq!(output_scale(640, 360), 3);
+    }
+
+    #[test]
+    fn large_regions_keep_their_size() {
+        assert_eq!(output_scale(1920, 1080), 1);
+        assert_eq!(output_scale(2560, 1440), 1);
+    }
+
+    #[test]
+    fn scaling_never_passes_4k() {
+        assert_eq!(output_scale(3000, 200), 1);
+        assert_eq!(output_scale(1000, 300), 3);
+    }
+
+    #[test]
+    fn rows_are_reversed_at_scale_one() {
         let mut out = Vec::new();
-        flip_rows(&[1, 2, 3, 4, 5, 6], 2, &mut out);
-        assert_eq!(out, [5, 6, 3, 4, 1, 2]);
+        upscale_flip(&[1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3], 1, 1, &mut out);
+        assert_eq!(out, [3, 3, 3, 3, 2, 2, 2, 2, 1, 1, 1, 1]);
+    }
+
+    #[test]
+    fn pixels_are_repeated_across_and_down_after_flipping() {
+        // Two rows of two pixels: [a b] over [c d].
+        let (a, b, c, d) = ([1u8; 4], [2u8; 4], [3u8; 4], [4u8; 4]);
+        let image = [a, b, c, d].concat();
+        let mut out = Vec::new();
+        upscale_flip(&image, 2, 2, &mut out);
+        let bottom = [c, c, d, d].concat();
+        let top = [a, a, b, b].concat();
+        assert_eq!(out, [&bottom[..], &bottom, &top, &top].concat());
     }
 }

@@ -21,6 +21,15 @@ use crate::region::{self, Crop, Selection};
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 const FRAME_RATE: u32 = 30;
+const MIN_BITRATE: u64 = 8_000_000;
+const MAX_BITRATE: u64 = 50_000_000;
+
+/// Bitrate for the encoded size: the encoder's fixed default starves large frames, and Media
+/// Foundation undershoots badly on small ones. About 0.25 bit per pixel keeps screen text sharp.
+fn bitrate_for(width: u32, height: u32, fps: u32) -> u32 {
+    let bits = u64::from(width) * u64::from(height) * u64::from(fps) / 4;
+    bits.clamp(MIN_BITRATE, MAX_BITRATE) as u32
+}
 
 pub struct EncoderConfig {
     width: u32,
@@ -29,6 +38,7 @@ pub struct EncoderConfig {
     audio: bool,
     clock: VideoClock,
     crop: Option<Crop>,
+    scale: u32,
 }
 
 /// What to record. Monitors use the one-based ids from `list_sources`.
@@ -63,6 +73,7 @@ pub struct Capture {
     encoder: Option<VideoEncoder>,
     clock: VideoClock,
     crop: Option<Crop>,
+    scale: usize,
     unpadded: Vec<u8>,
     flipped: Vec<u8>,
 }
@@ -72,18 +83,22 @@ impl GraphicsCaptureApiHandler for Capture {
     type Error = BoxError;
 
     fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-        let EncoderConfig { width, height, path, audio, clock, crop } = ctx.flags;
+        let EncoderConfig { width, height, path, audio, clock, crop, scale } = ctx.flags;
+        let video = VideoSettingsBuilder::new(width, height)
+            .sub_type(VideoSettingsSubType::H264)
+            .frame_rate(FRAME_RATE)
+            .bitrate(bitrate_for(width, height, FRAME_RATE));
         let encoder = VideoEncoder::new(
-            VideoSettingsBuilder::new(width, height).sub_type(VideoSettingsSubType::H264).frame_rate(FRAME_RATE),
+            video,
             AudioSettingsBuilder::new().disabled(!audio),
             ContainerSettingsBuilder::new(),
             path,
         )?;
-        Ok(Self { encoder: Some(encoder), clock, crop, unpadded: Vec::new(), flipped: Vec::new() })
+        Ok(Self { encoder: Some(encoder), clock, crop, scale: scale as usize, unpadded: Vec::new(), flipped: Vec::new() })
     }
 
     fn on_frame_arrived(&mut self, frame: &mut Frame, _control: InternalCaptureControl) -> Result<(), Self::Error> {
-        let Self { encoder, clock, crop, unpadded, flipped } = self;
+        let Self { encoder, clock, crop, scale, unpadded, flipped } = self;
         let Some(encoder) = encoder.as_mut() else { return Ok(()) };
         match crop {
             None => encoder.send_frame(frame)?,
@@ -93,7 +108,7 @@ impl GraphicsCaptureApiHandler for Capture {
                 let timestamp = frame.timestamp()?.Duration;
                 let buffer = frame.buffer_crop(crop.x, crop.y, crop.right(), crop.bottom())?;
                 let pixels = buffer.as_nopadding_buffer(unpadded);
-                region::flip_rows(pixels, crop.width as usize * 4, flipped);
+                region::upscale_flip(pixels, crop.width as usize, *scale, flipped);
                 encoder.send_frame_buffer(flipped, timestamp)?;
             }
         }
@@ -141,19 +156,20 @@ pub struct Session {
 impl Session {
     pub fn start(path: &Path, target: Target, audio: AudioOptions) -> Result<Self, String> {
         let clock = VideoClock::new(OnceLock::new());
-        let config = |width: u32, height: u32, crop: Option<Crop>| EncoderConfig {
-            width: width & !1,
-            height: height & !1,
+        let config = |width: u32, height: u32, crop: Option<Crop>, scale: u32| EncoderConfig {
+            width: (width & !1) * scale,
+            height: (height & !1) * scale,
             path: path.to_path_buf(),
             audio: audio.any(),
             clock: clock.clone(),
             crop,
+            scale,
         };
         let control = match target {
             Target::Monitor { monitor: id } => {
                 let monitor = monitor(id)?;
                 let (width, height) = monitor_size(&monitor)?;
-                launch(monitor, config(width, height, None))?
+                launch(monitor, config(width, height, None, 1))?
             }
             Target::Window { id } => {
                 let hwnd: usize = id.parse().map_err(|_| "Janela inválida.".to_string())?;
@@ -163,13 +179,14 @@ impl Session {
                 }
                 // The encoder pads or crops frames when the window is resized mid-recording.
                 let (width, height) = (window_side(window.width())?, window_side(window.height())?);
-                launch(window, config(width, height, None))?
+                launch(window, config(width, height, None, 1))?
             }
             Target::Region { monitor: id, selection } => {
                 let monitor = monitor(id)?;
                 let (width, height) = monitor_size(&monitor)?;
                 let crop = region::fit(selection, width, height).ok_or("A região selecionada é pequena demais.")?;
-                launch(monitor, config(crop.width, crop.height, Some(crop)))?
+                let scale = region::output_scale(crop.width, crop.height);
+                launch(monitor, config(crop.width, crop.height, Some(crop), scale))?
             }
         };
         let handler = control.callback();
@@ -214,12 +231,24 @@ mod tests {
         record(Target::Monitor { monitor: 1 }, "probe.mp4");
     }
 
-    /// `cargo test -- --ignored records_region` writes `probe-region.mp4` (640x360 at 100,100).
+    /// `cargo test -- --ignored records_region` writes `probe-region.mp4`: 640x360 at 100,100, encoded at 1920x1080.
     #[test]
     #[ignore]
     fn records_region() {
         let selection = Selection { x: 100, y: 100, width: 640, height: 360 };
         record(Target::Region { monitor: 1, selection }, "probe-region.mp4");
+    }
+
+    #[test]
+    fn bitrate_grows_with_the_encoded_size() {
+        assert_eq!(bitrate_for(1920, 1080, 30), 15_552_000);
+        assert!(bitrate_for(2560, 1440, 30) > bitrate_for(1920, 1080, 30));
+    }
+
+    #[test]
+    fn bitrate_is_kept_between_floor_and_ceiling() {
+        assert_eq!(bitrate_for(640, 360, 30), 8_000_000);
+        assert_eq!(bitrate_for(3840, 2160, 60), 50_000_000);
     }
 
     #[test]
