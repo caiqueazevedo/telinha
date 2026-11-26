@@ -1,5 +1,3 @@
-//! The full-monitor overlay where the user drags the capture region.
-
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -11,7 +9,6 @@ use crate::sources;
 pub const PICKER_LABEL: &str = "region-picker";
 pub const SELECTED_EVENT: &str = "region://selected";
 
-/// The monitor the open picker covers. The page only knows pixels relative to itself.
 #[derive(Default)]
 pub struct Picker(Mutex<Option<usize>>);
 
@@ -22,7 +19,6 @@ pub struct PickedRegion {
     pub selection: Selection,
 }
 
-// Async so the window is built off the main thread; sync commands deadlock on Windows here.
 #[tauri::command]
 pub async fn open_region_picker(app: AppHandle, picker: State<'_, Picker>, monitor: usize) -> Result<(), String> {
     let source = sources::monitors()?
@@ -56,7 +52,6 @@ pub async fn open_region_picker(app: AppHandle, picker: State<'_, Picker>, monit
     window.set_focus().map_err(|e| e.to_string())
 }
 
-/// Called by the picker page; `None` means the user cancelled.
 #[tauri::command]
 pub async fn finish_region_pick(
     app: AppHandle,

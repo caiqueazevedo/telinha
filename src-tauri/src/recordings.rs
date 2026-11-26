@@ -1,5 +1,3 @@
-//! The recent recordings shown under the record button.
-
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
@@ -19,7 +17,6 @@ pub struct Recording {
     pub modified_ms: u64,
 }
 
-/// A file Telinha wrote: a bare name, so it can never point outside the output folder.
 fn is_recording_name(name: &str) -> bool {
     name.starts_with("telinha-")
         && name.ends_with(".mp4")

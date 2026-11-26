@@ -1,5 +1,3 @@
-//! Microphone and system (loopback) capture mixed into the encoder's PCM16 stereo stream.
-
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, OnceLock};
@@ -14,15 +12,12 @@ use crate::jitter::JitterBuffer;
 use crate::mix::{self, OUTPUT_CHANNELS, OUTPUT_RATE};
 
 const MIX_INTERVAL: Duration = Duration::from_millis(20);
-/// Audio held back per source to ride out uneven WASAPI packets; it delays audio by this much.
 const JITTER_TARGET: Duration = Duration::from_millis(60);
 const JITTER_TOLERANCE: Duration = Duration::from_millis(20);
-/// Beyond this (a stalled mixer), the backlog is cut back to the target.
 const JITTER_MAX: Duration = Duration::from_millis(500);
 const MIC_GAIN: f32 = 1.0;
 const SYSTEM_GAIN: f32 = 0.8;
 
-/// Moment the first video frame reached the encoder; audio sample 0 is aligned to it.
 pub type VideoClock = Arc<OnceLock<Instant>>;
 pub type Sink = Box<dyn FnMut(&[u8]) -> Result<(), String> + Send>;
 
@@ -47,7 +42,6 @@ fn open(device_id: &str, loopback: bool, gain: f32) -> Result<Source, String> {
     let host = cpal::default_host();
     let id = device_id.parse().map_err(|_| format!("Dispositivo de áudio inválido: {device_id}"))?;
     let device = host.device_by_id(&id).ok_or("Dispositivo de áudio não encontrado.")?;
-    // Building an input stream on a playback device turns on WASAPI loopback.
     let supported = if loopback { device.default_output_config() } else { device.default_input_config() }
         .map_err(|e| format!("Formato de áudio indisponível: {e}"))?;
     let queue = new_queue();
@@ -94,13 +88,10 @@ pub struct AudioCapture {
 }
 
 impl AudioCapture {
-    /// Opens the devices and starts mixing. `sink` receives PCM16 stereo at 48 kHz, paced by the wall
-    /// clock from the first video frame so audio and video stay the same length.
     pub fn start(mic: Option<String>, system: Option<String>, clock: VideoClock, sink: Sink) -> Result<Self, String> {
         let stop = Arc::new(AtomicBool::new(false));
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         let thread_stop = stop.clone();
-        // cpal streams are not Send, so they live and die on this thread.
         let thread = std::thread::spawn(move || {
             let sources = mic
                 .map(|id| open(&id, false, MIC_GAIN))
@@ -123,7 +114,6 @@ impl AudioCapture {
         Ok(Self { stop, thread })
     }
 
-    /// Flushes the audio due up to now and releases the devices.
     pub fn stop(self) -> Result<(), String> {
         self.stop.store(true, Ordering::Relaxed);
         self.thread.join().map_err(|_| "Thread de áudio falhou.".to_string())?

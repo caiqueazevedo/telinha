@@ -8,7 +8,6 @@ pub fn file_stem(at: NaiveDateTime) -> String {
     format!("telinha-{}", at.format("%Y%m%d-%H%M%S"))
 }
 
-/// Picks a path in `dir` that does not exist yet, suffixing `-2`, `-3`, ... on collision.
 pub fn unique_path(dir: &Path, stem: &str, exists: impl Fn(&Path) -> bool) -> PathBuf {
     let first = dir.join(format!("{stem}.mp4"));
     if !exists(&first) {

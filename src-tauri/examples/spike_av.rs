@@ -1,4 +1,3 @@
-//! Phase 0 spike: 5 s of the primary monitor plus a synthetic 440 Hz tone into one MP4.
 use std::f32::consts::TAU;
 use std::time::Instant;
 

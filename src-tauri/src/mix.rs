@@ -1,9 +1,6 @@
-//! Pure audio helpers: channel conversion, resampling to the encoder rate and mixing to PCM16.
-
 pub const OUTPUT_RATE: u32 = 48_000;
 pub const OUTPUT_CHANNELS: usize = 2;
 
-/// Converts interleaved frames with `channels` channels to interleaved stereo.
 pub fn to_stereo(input: &[f32], channels: usize, out: &mut Vec<f32>) {
     out.clear();
     match channels {
@@ -13,8 +10,6 @@ pub fn to_stereo(input: &[f32], channels: usize, out: &mut Vec<f32>) {
     }
 }
 
-/// Streaming linear resampler for interleaved stereo. Keeps state across calls so
-/// consecutive device buffers join without clicks.
 pub struct Resampler {
     step: f64,
     pos: f64,
@@ -26,13 +21,11 @@ impl Resampler {
         Self { step: f64::from(from_rate) / f64::from(OUTPUT_RATE), pos: 0.0, prev: [0.0; 2] }
     }
 
-    /// Appends the resampled frames of `input` (stereo) to `out`.
     pub fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
         let frames = input.len() / OUTPUT_CHANNELS;
         if frames == 0 {
             return;
         }
-        // Frame -1 is the last frame of the previous call.
         let frame = |i: isize| -> [f32; 2] {
             if i < 0 { self.prev } else { [input[i as usize * 2], input[i as usize * 2 + 1]] }
         };
@@ -50,10 +43,8 @@ impl Resampler {
     }
 }
 
-/// Level above which peaks are bent smoothly towards full scale instead of clipped flat.
 const SOFT_KNEE: f32 = 0.9;
 
-/// Leaves the signal untouched up to the knee, then saturates along a tanh curve that never exceeds 1.
 pub fn soft_clip(sample: f32) -> f32 {
     let magnitude = sample.abs();
     if magnitude <= SOFT_KNEE {
@@ -63,8 +54,6 @@ pub fn soft_clip(sample: f32) -> f32 {
     (SOFT_KNEE + headroom * ((magnitude - SOFT_KNEE) / headroom).tanh()).copysign(sample)
 }
 
-/// Sums tracks with their gains and writes little-endian PCM16. Tracks shorter than
-/// `samples` are padded with silence.
 pub fn mix_to_pcm16(tracks: &[(&[f32], f32)], samples: usize, out: &mut Vec<u8>) {
     out.clear();
     out.reserve(samples * 2);

@@ -25,7 +25,6 @@ body,
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Mirrored like a mirror, which is what people expect of their own face. */
   transform: scaleX(-1);
 }
 

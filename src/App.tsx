@@ -65,7 +65,6 @@ function App() {
 
   useEffect(() => {
     const unlisten = recorder.onRegionSelected((region) => {
-      // A cancelled pick keeps the previous area.
       if (region) setCapture((current) => ({ ...current, monitor: region.monitor, region }));
     });
     return () => {
@@ -132,7 +131,6 @@ function App() {
     }
   }
 
-  // The shortcut listener is registered once, so it calls whatever toggle is current.
   const toggleRef = useRef(toggle);
   toggleRef.current = toggle;
   useEffect(() => {
@@ -203,7 +201,6 @@ function App() {
         />
       </fieldset>
 
-      {/* The bubble can be toggled mid-recording; the window capture mode never shows it. */}
       <label className="toggle">
         <input type="checkbox" checked={webcam} onChange={(event) => toggleWebcam(event.target.checked)} />
         Webcam
