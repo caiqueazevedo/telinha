@@ -35,7 +35,6 @@ impl fmt::Display for TransitionError {
     }
 }
 
-/// Recording lifecycle: `Idle -> Recording -> Stopping -> Idle`.
 pub struct Machine {
     phase: Phase,
     last_recording: Option<PathBuf>,
@@ -74,7 +73,6 @@ impl Machine {
         Ok(())
     }
 
-    /// Closes a stop that is in progress with the outcome of finalizing the file.
     pub fn finish(&mut self, outcome: Result<(), String>) {
         let Phase::Stopping { path } = std::mem::replace(&mut self.phase, Phase::Idle) else {
             return;
@@ -85,7 +83,6 @@ impl Machine {
         }
     }
 
-    /// Records a failure to start; the machine stays idle.
     pub fn fail(&mut self, error: String) {
         self.phase = Phase::Idle;
         self.error = Some(error);

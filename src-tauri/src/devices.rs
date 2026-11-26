@@ -26,7 +26,6 @@ fn describe(devices: impl Iterator<Item = cpal::Device>, default: Option<cpal::D
         .collect()
 }
 
-/// Lists microphones and playback devices (the latter are recorded through WASAPI loopback).
 #[tauri::command]
 pub fn list_audio_devices() -> Result<AudioDevices, String> {
     let host = cpal::default_host();

@@ -24,8 +24,6 @@ const FRAME_RATE: u32 = 30;
 const MIN_BITRATE: u64 = 8_000_000;
 const MAX_BITRATE: u64 = 50_000_000;
 
-/// Bitrate for the encoded size: the encoder's fixed default starves large frames, and Media
-/// Foundation undershoots badly on small ones. About 0.25 bit per pixel keeps screen text sharp.
 fn bitrate_for(width: u32, height: u32, fps: u32) -> u32 {
     let bits = u64::from(width) * u64::from(height) * u64::from(fps) / 4;
     bits.clamp(MIN_BITRATE, MAX_BITRATE) as u32
@@ -41,7 +39,6 @@ pub struct EncoderConfig {
     scale: u32,
 }
 
-/// What to record. Monitors use the one-based ids from `list_sources`.
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Target {
@@ -54,7 +51,6 @@ pub enum Target {
     },
 }
 
-/// Devices to record; `None` leaves that source out.
 #[derive(Debug, Default, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioOptions {
@@ -68,7 +64,6 @@ impl AudioOptions {
     }
 }
 
-/// Receives captured frames on the capture thread and feeds them to the encoder.
 pub struct Capture {
     encoder: Option<VideoEncoder>,
     clock: VideoClock,
@@ -102,7 +97,6 @@ impl GraphicsCaptureApiHandler for Capture {
         let Some(encoder) = encoder.as_mut() else { return Ok(()) };
         match crop {
             None => encoder.send_frame(frame)?,
-            // A frame smaller than the crop (display mode change) is dropped rather than encoded wrong.
             Some(crop) if !crop.fits(frame.width(), frame.height()) => return Ok(()),
             Some(crop) => {
                 let timestamp = frame.timestamp()?.Duration;
@@ -146,7 +140,6 @@ fn window_side(value: Result<i32, windows_capture::window::Error>) -> Result<u32
     value.ok().and_then(|v| u32::try_from(v).ok()).ok_or_else(|| "Tamanho da janela indisponível.".into())
 }
 
-/// A running recording of a monitor, a window or a region of a monitor.
 pub struct Session {
     control: CaptureControl<Capture, BoxError>,
     handler: Arc<parking_lot::Mutex<Capture>>,
@@ -177,7 +170,6 @@ impl Session {
                 if !window.is_valid() {
                     return Err("A janela não está mais disponível. Atualize a lista de fontes.".into());
                 }
-                // The encoder pads or crops frames when the window is resized mid-recording.
                 let (width, height) = (window_side(window.width())?, window_side(window.height())?);
                 launch(window, config(width, height, None, 1))?
             }
@@ -209,7 +201,6 @@ impl Session {
         Ok(Self { control, handler, audio: capture })
     }
 
-    /// Stops capturing and finalizes the MP4. Blocks until the file is written.
     pub fn stop(self) -> Result<(), String> {
         let audio = self.audio.map_or(Ok(()), AudioCapture::stop);
         self.control.stop().map_err(|e| format!("Falha ao parar a captura: {e}"))?;
@@ -223,15 +214,12 @@ impl Session {
 mod tests {
     use super::*;
 
-    /// Needs a real display: `cargo test -- --ignored records_primary_monitor`.
-    /// Set `TELINHA_PROBE_AUDIO=1` to also record the default mic and speakers.
     #[test]
     #[ignore]
     fn records_primary_monitor() {
         record(Target::Monitor { monitor: 1 }, "probe.mp4");
     }
 
-    /// `cargo test -- --ignored records_region` writes `probe-region.mp4`: 640x360 at 100,100, encoded at 1920x1080.
     #[test]
     #[ignore]
     fn records_region() {

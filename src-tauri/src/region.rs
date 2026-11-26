@@ -1,10 +1,5 @@
-//! Pure geometry for region capture: fitting a selection to the monitor and preparing pixels
-//! for the encoder.
-
-/// Smallest side the encoder accepts for a region.
 pub const MIN_SIDE: u32 = 16;
 
-/// A selection in physical pixels, relative to the monitor's top-left corner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Selection {
     pub x: i32,
@@ -13,7 +8,6 @@ pub struct Selection {
     pub height: u32,
 }
 
-/// A crop guaranteed to fit inside the monitor, with even sides (H.264 needs them).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Crop {
     pub x: u32,
@@ -36,8 +30,6 @@ impl Crop {
     }
 }
 
-/// Fits `selection` inside a `bounds_width` x `bounds_height` monitor. Returns `None` when what
-/// is left is smaller than [`MIN_SIDE`].
 pub fn fit(selection: Selection, bounds_width: u32, bounds_height: u32) -> Option<Crop> {
     let axis = |start: i32, length: u32, bound: u32| -> (u32, u32) {
         let begin = i64::from(start).clamp(0, i64::from(bound));
@@ -49,15 +41,10 @@ pub fn fit(selection: Selection, bounds_width: u32, bounds_height: u32) -> Optio
     (width >= MIN_SIDE && height >= MIN_SIDE).then_some(Crop { x, y, width, height })
 }
 
-/// Integer factor a region is enlarged by before encoding, so a small selection still reaches about
-/// 1080 lines (players would otherwise blur it when filling the screen) without passing 4K.
 pub fn output_scale(width: u32, height: u32) -> u32 {
     1080u32.div_ceil(height).min(3840 / width).min(2160 / height).max(1)
 }
 
-/// Enlarges a tightly packed BGRA image by `scale` with nearest-neighbour (text stays crisp) and
-/// reverses its rows: the encoder's raw-buffer path expects bottom-to-top rows, while captured
-/// frames are top-to-bottom.
 pub fn upscale_flip(pixels: &[u8], width: usize, scale: usize, out: &mut Vec<u8>) {
     out.clear();
     out.reserve(pixels.len() * scale * scale);
@@ -138,7 +125,6 @@ mod tests {
 
     #[test]
     fn pixels_are_repeated_across_and_down_after_flipping() {
-        // Two rows of two pixels: [a b] over [c d].
         let (a, b, c, d) = ([1u8; 4], [2u8; 4], [3u8; 4], [4u8; 4]);
         let image = [a, b, c, d].concat();
         let mut out = Vec::new();

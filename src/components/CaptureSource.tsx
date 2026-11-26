@@ -14,7 +14,6 @@ const MODES: { mode: CaptureMode; label: string }[] = [
   { mode: "region", label: "Região" },
 ];
 
-/** The target to record, or `null` while the choice is incomplete. */
 export function targetOf(choice: CaptureChoice): CaptureTarget | null {
   switch (choice.mode) {
     case "monitor":

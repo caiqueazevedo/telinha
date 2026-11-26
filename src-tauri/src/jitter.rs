@@ -1,6 +1,3 @@
-//! Jitter buffer between a capture callback and the mixer clock: absorbs uneven device packets so the
-//! mixer never reads a half-filled queue, and nudges the fill level to follow clock drift.
-
 use std::collections::VecDeque;
 
 pub struct JitterBuffer {
@@ -13,9 +10,6 @@ pub struct JitterBuffer {
 }
 
 impl JitterBuffer {
-    /// Sizes are in interleaved samples: the buffer refills to `target` after an underrun, corrects
-    /// by one frame per pull once the level leaves `target ± tolerance`, and cuts back to `target`
-    /// above `max`.
     pub fn new(channels: usize, target: usize, tolerance: usize, max: usize) -> Self {
         Self { queue: VecDeque::with_capacity(max), channels, target, tolerance, max, primed: false }
     }
@@ -29,7 +23,6 @@ impl JitterBuffer {
         self.primed = false;
     }
 
-    /// Writes exactly `count` samples to `out`, silence while the buffer is refilling.
     pub fn pull(&mut self, count: usize, out: &mut Vec<f32>) {
         out.clear();
         let frame = self.channels;
@@ -66,7 +59,6 @@ impl JitterBuffer {
 mod tests {
     use super::*;
 
-    /// Stereo, refill at 8 samples, ±2 tolerance, cut above 20.
     fn buffer() -> JitterBuffer {
         JitterBuffer::new(2, 8, 2, 20)
     }

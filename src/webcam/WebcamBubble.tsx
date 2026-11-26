@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 
 type Props = {
-  /** Starts a native window drag; called on a left press anywhere but the close button. */
   onDrag: () => void;
   onClose: () => void;
 };

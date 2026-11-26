@@ -1,17 +1,12 @@
-//! The floating webcam bubble. It sits on screen, so monitor and region captures record it.
-
 use tauri::webview::{PermissionKind, PermissionResponse};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 pub const WEBCAM_LABEL: &str = "webcam";
 pub const CLOSED_EVENT: &str = "webcam://closed";
 
-/// Bubble diameter in logical pixels.
 const DIAMETER: f64 = 200.0;
-/// Gap between the bubble and the work area edge, in logical pixels.
 const MARGIN: f64 = 24.0;
 
-/// The bubble loads only our own page, so its camera request needs no WebView2 prompt.
 fn permission(kind: PermissionKind) -> PermissionResponse {
     match kind {
         PermissionKind::Camera => PermissionResponse::Allow,
@@ -19,14 +14,12 @@ fn permission(kind: PermissionKind) -> PermissionResponse {
     }
 }
 
-/// Bottom-right corner of the work area, so the bubble clears the taskbar.
 fn corner(area_pos: (i32, i32), area_size: (u32, u32), side: u32, margin: u32) -> (i32, i32) {
     let x = area_pos.0 + area_size.0 as i32 - side as i32 - margin as i32;
     let y = area_pos.1 + area_size.1 as i32 - side as i32 - margin as i32;
     (x.max(area_pos.0), y.max(area_pos.1))
 }
 
-// Async so the window is built off the main thread; sync commands deadlock on Windows here.
 #[tauri::command]
 pub async fn open_webcam(app: AppHandle) -> Result<(), String> {
     if let Some(open) = app.get_webview_window(WEBCAM_LABEL) {

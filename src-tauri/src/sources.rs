@@ -1,5 +1,3 @@
-//! Capture sources the user can pick: monitors and top-level windows.
-
 use serde::Serialize;
 use windows_capture::monitor::Monitor;
 use windows_capture::window::Window;
@@ -9,7 +7,6 @@ use crate::region::MIN_SIDE;
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MonitorSource {
-    /// One-based position in the enumeration, as `Monitor::from_index` expects.
     pub id: usize,
     pub name: String,
     pub device_name: String,
@@ -21,7 +18,6 @@ pub struct MonitorSource {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowSource {
-    /// The HWND as a decimal string, so JS numbers never round it.
     pub id: String,
     pub title: String,
     pub process: String,
@@ -88,7 +84,6 @@ pub fn list_sources() -> Result<Sources, String> {
 mod tests {
     use super::*;
 
-    /// Needs a real desktop session.
     #[test]
     #[ignore]
     fn lists_at_least_the_primary_monitor() {
